@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+dist/build/
+.DS_Store
+*.log
+config/baseEx.js
+config/masterDomainEx.js
+songs_dir/
+yarn.lock
+package-lock.json
+.vscode/
