@@ -2,27 +2,19 @@ var fs = require('fs')
 var path = require('path')
 var request = require('request');
 
-var test_url = 'http://music.163.com/#/playlist?id=88156914'
+var url = process.argv[2].replace('/#/','/')
 var minimumsize = 10
-
-test_url = test_url.replace('/#/','/')
-console.log(test_url)
 
 const getSongList = (url) => {
   request(url, (error, body) => {
     if (error) throw error;
-    var res = body.body.match(/<textarea style="display:none;">(.*?)<\/textarea>/)
-    console.log(res)
-    var contents, playload = {}
+    var res = /<ul class="f-hide">(.*?)<\/ul>/gi.exec(body.body)
+    var playload = {}, res1, contents
     if (res) {
-      contents = JSON.parse(res[1])
+      res1 = res[1].replace(/<(?:.|\s)*?>/g, ",")
+      contents = res1.split(',').filter((x) => x !== '')
       contents.map((value) => {
-        var search_list = []
-        search_list.push(value['name'])
-        value['artists'].map((artist) => {
-          search_list.push(artist['name'])
-        })
-        playload = {'word': search_list.join('+'), 'version': '2', 'from': '0'}
+        playload = {'word': value, 'version': '2', 'from': '0'}
         getSongId(playload)
       })
     } else {
@@ -58,11 +50,17 @@ const downloadSong = async (params) => {
       if (songlink.length < 10) {
         return
       }
-      fs.stat(songsdir, (err, stat) => {
-        if (!stat.isDirectory()) {
-          fs.mkdir(songsdir, (err) => {
-            if (err) throw err;
-          })
+      fs.stat(songsdir, (err, stats) => {
+        if (stats && stats.isDirectory()) {
+          return true
+        } else {
+          try {
+            fs.mkdir(songsdir, (err) => {
+              if (err) throw err;
+            })
+          } catch(err) {
+            throw err
+          }
         }
       })
       songname = contents["data"]["songList"][0]["songName"]
@@ -78,26 +76,27 @@ const downloadSong = async (params) => {
       resolve(body)
     })
   })
-  var songfile = await new Promise((resolve, reject) => {
-    request(res.songlink, (error, body) => {
-      if (error) reject(error);
-      resolve(body)
-    })
-  })
   var size = (Number(headers.headers['content-length']) / Math.pow(1024, 2)).toFixed(2)
-  fs.stat(res.filename, (err, stat) => {
-    if(stat && stat.isFile()) {
-      console.log(`${res.songname} is already download in songs_dir`)
-    } else {
-      if (size >= minimumsize) {
-        var out = fs.createWriteStream(res.filename)
-        out.write(songfile)
-        out.end()
+  var songfile = await new Promise((resolve, reject) => {
+    fs.stat(res.filename, (err, stat) => {
+      var search_list = []
+      if(stat && stat.isFile()) {
+        console.log(`${res.songname} is already download in songs_dir`)
       } else {
-        console.log(1)
-      }
-    }  
+        if (size >= minimumsize) {
+          request.get(res.songlink)
+          .on('error', function(err) {
+            console.log(err)
+          })
+          .pipe(fs.createWriteStream(res.filename))
+          search_list.push(res.songname)
+          console.log(`${search_list} 已经下载完成！`)
+        } else {
+          console.log(`${res.songname} is less than 10 Mb, skipping`)
+        }
+      }  
+    })
   })
 }
 
-getSongList(test_url)
+getSongList(url)
